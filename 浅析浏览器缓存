@@ -1,0 +1,98 @@
+### 浅析浏览器缓存  
+>浏览器缓存主要是HTTP协议定义的缓存，当然也有非HTTP协议的，比如HTML的meta标签，该标签提供了用来定义文档信息的属性：
+
+```html
+<meta http-equiv="cache-control“ content="no-cache">
+```
+**在此主要还是解析基于HTTP协议定义的缓存机制**   
+ 
+HTTP首部字段：  
+> 1.  通用首部字段：Cache-Control：控制缓存的行为；Pragma：HTTP1.0遗留物，值为“no-cache”时禁用缓存  
+> 2.  请求首部字段：If-Match：比较ETag是否一致；If-None-Match：比较ETag是否不一致；If-Modified-Since：比较资源最后更新时间是否一致；If-Unmodified-Since：比较资源最后更新时间是否不一致  
+> 3. 响应首部字段：ETag：资源匹配信息  
+> 4. 实体首部字段：Expires：HTTP1.0遗留物，实体过期时间；Last-Modified：资源最后一次修改时间  
+
+HTTP1.0时代缓存方式：  
+
+**1. Pragma**  
+值为“no-cache”时候，通知客户端不要对该资源读取缓存，每次必须向服务器请求才可以
+```html
+Cache-Control: public, max-age=864000 // 缓存资源一天
+Pragma: no-cache // 禁用缓存
+```
+同时设定了这两个参数，重新访问页面会发现还会重新发送请求，说明：
+_**Pragma优先级>>Cache-Control优先级**_
+
+**2. Expires**
+Expires用来设置缓存的过期时间，值为GMT（格林尼治时间），是服务器响应消息字段，在响应HTTP请求时可以通知浏览器在过期时间以前可以直接从浏览器缓存中获取数据
+```html
+Expires: Fri, 11 Jun 2020 11:33:00 GMT // 设置缓存过期时间
+```
+`【注：该处时间为服务器时间，可能存在时间误差的问题】`
+
+**Cache-Control**  
+针对“Expires时间是相对于服务器而言，无法保证和客户端时间统一”的问题，HTTP1.1新增了Cache-Control来定义缓存过期时间，若报文中同时出现了Expires和Cache-Control  
+**_优先级从高到低分别是 Pragma -> Cache-Control -> Expires_**
+
+作为请求首部，可选的值：
+>**no-cache**：涉及请求流程，先梳理一下：
+① 如果请求本地有缓存则从本地缓存中获取一个对应资源副本
+② 检查这个副本是否是最新的，是则直接返回，否则继续向服务器转发请求
+③ 服务器收到该请求，判断资源是否有变更，是则返回新内容，否则304，未变更
+④ 客户端更新本地缓存
+no-cache会直接跳过步骤2，也就是告诉浏览器，直接转发请求到服务器，等服务器确认最新了才可以使用。no-cache其实是允许浏览器缓存副本，但是总会去验证缓存是否是最新，一旦确认最新，则可以使用缓存作为响应
+>**no-store**：绝对禁止缓存，每一个请求都要被发送到服务器然后重新获取数据
+>**only-if-cached**：告知浏览器我只希望内容来自缓存，但是并不关心缓存响应是否是最新的
+>**max-age(单位s)**：用来设置缓存的最长有效时间，使用的是相对时间；例如max-age=60，就是说在请求发出后的60秒内再次请求时，浏览器不会再去请求服务器，而是从浏览器缓存中读取数据
+>**max-stale**：告知服务器，客户端愿意接受一个超过设定缓存时间的资源，若没设定时间，则任意超出时间
+
+作为响应首部，可选的值：
+>**public**：可以无条件缓存该响应，该响应可以被多用户共享，可被缓存代理服务器缓存，比如CDN
+>**private**：只针对个体用户缓存响应，且可以具体到某个字段。例如：private-”username“，则响应头中为username的标头内容不会被共享缓存
+>**s-maxage**：和max-age的唯一区别是前者仅仅用于共享缓存，而不是用于用户代理的本地缓存，s-maxage优先级高于max-age。
+>**must-revalidate**：告诉浏览器，当前资源一定是向服务器验证请求的，若请求失败返回504
+
+```html
+Cache-Control: max-age=3600， must-revalidate // 资源从源服务器上取得，缓存时间为一小时，在一小时之内获取该资源无需发送请求，之后必须向服务器发送验证该资源
+```
+**缓存校验字段：**
+上述的首部字段均能让客户端决定是否向服务器发送请求，比如设定缓存时间未过期，那么直接从本地缓存读取（200 from cache），若缓存时间过期了，则会发送请求到服务器。  
+**_现在如果客户端向服务器发送了请求，那么是否需要读取资源整个实体内容呢？_**
+为了让客户端和服务器之间实现缓存文件更新的验证、提升缓存复用率，HTTP1.1增加了几个首部字段来实现：
+#### Last-Modified
+在浏览器第一次请求某一个URL时，服务器端的返回状态会是200，同时有一个Last-Modified的属性标记此文件在服务器端最后被修改的时间。
+客户端第二次请求时，根据HTTP协议的规定，浏览器会向服务器传送If-Modified-Since报头，询问该时间 之后文件是否有被修改过。
+```html
+Last-Modified: Fri, 22 Jul 2016 01:47:00 GMT
+```
+> 1. If-Modified-Since: Last-Modified-value  如果服务器端资源没有变化，则自动返回HTTP 304（Not Changed）状态码，使用缓存数据。当服务器端代码发生变化或者重启服务器时，则重新发出资源，返回第一个请求一样。从而保证不向客户端重复发送资源，也保证当资源发生变化时，客户端能获取到最新的资源
+> 2. If-Unmodified-Since: Last-Modified-value 该值告诉服务器，若Last-Modified没有匹配上（资源在服务器最后更新时间改变了），就应当返回412状态码给客户端。
+
+Last-Modified存在一定问题，如果一个资源在服务器上修改了，但是实际内容没有发生变化，会因为Last-Modified时间匹配上返回了整个实体给客户端，**即使客户端缓存中存在一个一模一样的资源副本**
+
+#### ETag
+为了解决Last-Modified可能存在的不准确问题，HTTP1.1推出了ETag实体首部。当浏览器第一次请求时，服务器端会生成一段hash字符，用来表示本次请求，下次发送请求时会回传这个hash字符串到服务器端，服务器会进行校验，如果发现ETag没有变化，则会返回304。
+`【ETage的优先级高于Last-Modified】`
+```html
+ETag: "5d8c72a5edda8d6a:3239"
+```
+那么客户端如何把标记资源上的ETag传回服务器呢？请求报文有两个首部字段可以带上ETag值：
+>1. If-None-Match: ETag-value  示例中If-None-Match: "5d8c72a5edda8d6a:3239" 告诉服务端如果 ETag 没匹配上需要重发资源数据，否知直接回送304
+>2. If-Match: ETag-value 告诉服务器如果没有匹配到ETag，或者收到了“*”值而当前并没有该资源实体，返回412状态码给客户端
+
+![fgtfwfajs5ebaeia9kfi25acnk7d](https://user-images.githubusercontent.com/3364054/28409719-063ad49e-6d6e-11e7-9230-ccd967d4e150.jpg)
+
+综上实践：
+**1. Expires/Cache-Control**
+Expires用时刻来标记过期时间，难免受到时间同步的影响，而Cache-Control使用时间间隔很好的解决这个问题。但Cache-Control是HTTP1.1才有的，不适用HTTP1.0，而Expires既可以适用HTTP1.0，也适用于HTTP1.1，所以大多数情况下发送两个头是个更好的选择，但是优先使用Cache-Control
+**2. Last-Modified/ETag**
+两者都是通过某个标识值来请求资源，如果服务器资源没有变化，返回HTTP 304(Not Changed)状态码，内容为空，这样就节省了传输数据量。当资源变化之后，返回和第一次请求时类似。其中Last-Modified使用文件最后修改时间标识，无法处理文件一秒内多次修改的情况，而且只要文件修改了，内容一点没有修改的情况下，也会重新返回资源的内容；ETag作为“被请求变量的实体值”，完全解决了Last-Modified头部问题，但计算过程需要耗费服务器资源。
+**3. from-cache/304**
+ Expires和Cache-Control都有一个问题就是服务器端进行的修改，如果在缓存里，客户端是不会去请求服务器资源（非刷新），这就存在一个资源版本不符合的问题，而强制刷新一定会发起HTTP请求并返回资源内容，无论这段时间是否修改过；
+对于可缓存的资源，制定一个Expires或Cache-Control max-age以及一个Last-Modified或ETag至关重要。同时使用前者和后者可以很好的相互适应。
+
+**结论：**
+* 需要兼容HTTP1.0的时候需要使用Expires，不然可以考虑直接使用Cache-Control
+* 需要处理一秒内多次修改的情况，或者其他Last-Modified处理不了的情况，才使用ETag，否则使用Last-Modified。
+* 对于所有可缓存资源，需要指定一个Expires或Cache-Control，同时指定Last-Modified或者Etag
+* 可以通过标识文件版本名、加长缓存时间的方式来减少304响应。
