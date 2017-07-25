@@ -4,12 +4,12 @@
 **Core function**：
 ```js
 function addMethod(object, name, fn){
-  var old = object[name]; // 记录不同参数对应上一个处理函数，第一次为undefined, 第二次为第一次处理函数
+  var old = object[name]; // 记录不同参数对应上一个处理函数，第一次为undefined, 第二次为第一次处理函数...
   object[name] = function(){ // 返回闭包函数
     if(arguments.length === fn.length){
       return fn.apply(this, arguments); // 如果函数传入参数与最后添加函数参数相同，则直接处理
     }else if(typeof old === "function"){ 
-      return old.apply(this, arguments); // 否则，迭代前一个old函数处理，直到找到参数相等或不满足(typeof old === "function")返回undefined
+      return old.apply(this, arguments); // 迭代前一个old函数处理，找到参数相等或不满足条件返回undefined
     }
   };
 }
