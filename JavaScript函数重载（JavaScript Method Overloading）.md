@@ -14,3 +14,17 @@ function addMethod(object, name, fn){
   };
 }
 ```
+**Method overloading function**
+```js
+function Users(){
+  addMethod(this, "find", function(){ console.log("Nothing!")} );
+  addMethod(this, "find", function(name){ console.log(name)} );
+  addMethod(this, "find", function(name, age){ console.log(name, age)} );
+}
+```
+**Call function**
+```js
+ var user = new Users();
+ user.find("xlshen"); // xlshen
+ user.find("xlshen", 18); // xlshen 18
+```
