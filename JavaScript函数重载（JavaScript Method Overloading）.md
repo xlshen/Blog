@@ -28,3 +28,6 @@ function Users(){
  user.find("xlshen"); // xlshen
  user.find("xlshen", 18); // xlshen 18
 ```
+**注意事项**
+1. 模拟重载实现的只是参数的不同，没有区分参数的类型
+2. 因为是闭包的层层调用，如果要求性能的话，请慎用
