@@ -1,5 +1,1 @@
-'use strict';
-function(){
-  var gg = "GG";
-}
-
+346bad1ebc41c4f1465220f089b52eb7bbc72fff
