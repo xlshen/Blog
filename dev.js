@@ -1,3 +1,4 @@
 'use strict';
-function(){}
-
+function(){
+  var gg = "MM";
+}
